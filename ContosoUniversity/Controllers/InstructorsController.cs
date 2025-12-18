@@ -106,17 +106,17 @@ namespace ContosoUniversity.Controllers
             {
                 return BadRequest();
             }
-            Instructor instructor = db.Instructors
+            Instructor? instructor = db.Instructors
                 .Include(i => i.OfficeAssignment)
                 .Include(i => i.CourseAssignments)
                     .ThenInclude(c => c.Course)
                 .Where(i => i.ID == id)
-                .Single();
-            PopulateAssignedCourseData(instructor);
+                .SingleOrDefault();
             if (instructor == null)
             {
                 return NotFound();
             }
+            PopulateAssignedCourseData(instructor);
             return View(instructor);
         }
 
