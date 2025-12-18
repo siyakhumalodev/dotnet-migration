@@ -1,42 +1,36 @@
 using System;
-using System.Messaging;
-using System.Configuration;
+using Microsoft.Extensions.Configuration;
 using ContosoUniversity.Models;
 using Newtonsoft.Json;
 
 namespace ContosoUniversity.Services
 {
-    public class NotificationService
+    // MSMQ abstraction - System.Messaging is not available in .NET Core
+    // This implementation provides a stub for notification functionality
+    // In production, replace with Azure Service Bus, RabbitMQ, or similar
+    public class NotificationService : IDisposable
     {
+        private readonly IConfiguration _configuration;
         private readonly string _queuePath;
-        private readonly MessageQueue _queue;
+        private bool _disposed = false;
 
-        public NotificationService()
+        public NotificationService(IConfiguration configuration)
         {
+            _configuration = configuration;
             // Get queue path from configuration or use default
-            _queuePath = ConfigurationManager.AppSettings["NotificationQueuePath"] ?? @".\Private$\ContosoUniversityNotifications";
+            _queuePath = _configuration["NotificationQueuePath"] ?? @".\Private$\ContosoUniversityNotifications";
             
-            // Ensure the queue exists
-            if (!MessageQueue.Exists(_queuePath))
-            {
-                _queue = MessageQueue.Create(_queuePath);
-                _queue.SetPermissions("Everyone", MessageQueueAccessRights.FullControl);
-            }
-            else
-            {
-                _queue = new MessageQueue(_queuePath);
-            }
-            
-            // Configure queue formatter
-            _queue.Formatter = new XmlMessageFormatter(new Type[] { typeof(string) });
+            // MSMQ functionality is stubbed out for .NET Core compatibility
+            // TODO: Implement with modern message queue (Azure Service Bus, RabbitMQ, etc.)
+            System.Diagnostics.Debug.WriteLine($"NotificationService initialized (MSMQ stubbed). Queue path: {_queuePath}");
         }
 
-        public void SendNotification(string entityType, string entityId, EntityOperation operation, string userName = null)
+        public void SendNotification(string entityType, string entityId, EntityOperation operation, string? userName = null)
         {
             SendNotification(entityType, entityId, null, operation, userName);
         }
 
-        public void SendNotification(string entityType, string entityId, string entityDisplayName, EntityOperation operation, string userName = null)
+        public void SendNotification(string entityType, string entityId, string? entityDisplayName, EntityOperation operation, string? userName = null)
         {
             try
             {
@@ -51,14 +45,10 @@ namespace ContosoUniversity.Services
                     IsRead = false
                 };
 
+                // STUBBED: MSMQ Send
+                // TODO: Replace with actual message queue implementation
                 var jsonMessage = JsonConvert.SerializeObject(notification);
-                var message = new Message(jsonMessage)
-                {
-                    Label = $"{entityType} {operation}",
-                    Priority = MessagePriority.Normal
-                };
-
-                _queue.Send(message);
+                System.Diagnostics.Debug.WriteLine($"[STUBBED] Notification sent: {jsonMessage}");
             }
             catch (Exception ex)
             {
@@ -67,54 +57,43 @@ namespace ContosoUniversity.Services
             }
         }
 
-        public Notification ReceiveNotification()
+        public Notification? ReceiveNotification()
         {
-            try
-            {
-                var message = _queue.Receive(TimeSpan.FromSeconds(1));
-                var jsonContent = message.Body.ToString();
-                return JsonConvert.DeserializeObject<Notification>(jsonContent);
-            }
-            catch (MessageQueueException ex) when (ex.MessageQueueErrorCode == MessageQueueErrorCode.IOTimeout)
-            {
-                // No messages available
-                return null;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to receive notification: {ex.Message}");
-                return null;
-            }
+            // STUBBED: MSMQ Receive
+            // TODO: Replace with actual message queue implementation
+            System.Diagnostics.Debug.WriteLine("[STUBBED] ReceiveNotification called");
+            return null;
         }
 
         public void MarkAsRead(int notificationId)
         {
-            // In a real implementation, you might want to store notifications in database as well
-            // for persistence and tracking read status
+            // STUBBED: Mark as read
+            // TODO: Implement with persistence layer (database)
+            System.Diagnostics.Debug.WriteLine($"[STUBBED] MarkAsRead called for ID: {notificationId}");
         }
 
-        private string GenerateMessage(string entityType, string entityId, string entityDisplayName, EntityOperation operation)
+        private string GenerateMessage(string entityType, string entityId, string? entityDisplayName, EntityOperation operation)
         {
             var displayText = !string.IsNullOrWhiteSpace(entityDisplayName) 
                 ? $"{entityType} '{entityDisplayName}'" 
                 : $"{entityType} (ID: {entityId})";
 
-            switch (operation)
+            return operation switch
             {
-                case EntityOperation.CREATE:
-                    return $"New {displayText} has been created";
-                case EntityOperation.UPDATE:
-                    return $"{displayText} has been updated";
-                case EntityOperation.DELETE:
-                    return $"{displayText} has been deleted";
-                default:
-                    return $"{displayText} operation: {operation}";
-            }
+                EntityOperation.CREATE => $"New {displayText} has been created",
+                EntityOperation.UPDATE => $"{displayText} has been updated",
+                EntityOperation.DELETE => $"{displayText} has been deleted",
+                _ => $"{displayText} operation: {operation}"
+            };
         }
 
         public void Dispose()
         {
-            _queue?.Dispose();
+            if (!_disposed)
+            {
+                // Cleanup resources if needed
+                _disposed = true;
+            }
         }
     }
 }

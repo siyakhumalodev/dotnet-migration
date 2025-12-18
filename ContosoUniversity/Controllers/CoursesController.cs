@@ -1,17 +1,26 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
-using System.Net;
-using System.Web.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using System.IO;
-using System.Web;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using ContosoUniversity.Data;
 using ContosoUniversity.Models;
+using ContosoUniversity.Services;
 
 namespace ContosoUniversity.Controllers
 {
     public class CoursesController : BaseController
     {
+        private readonly IWebHostEnvironment _hostEnvironment;
+
+        public CoursesController(SchoolContext context, NotificationService notification, IWebHostEnvironment hostEnvironment) 
+            : base(context, notification)
+        {
+            _hostEnvironment = hostEnvironment;
+        }
         // GET: Courses
         public ActionResult Index()
         {
@@ -24,12 +33,12 @@ namespace ContosoUniversity.Controllers
         {
             if (id == null)
             {
-                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
+                return BadRequest();
             }
             Course course = db.Courses.Include(c => c.Department).Where(c => c.CourseID == id).Single();
             if (course == null)
             {
-                return HttpNotFound();
+                return NotFound();
             }
             return View(course);
         }
@@ -44,12 +53,12 @@ namespace ContosoUniversity.Controllers
         // POST: Courses/Create
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public ActionResult Create([Bind(Include = "CourseID,Title,Credits,DepartmentID,TeachingMaterialImagePath")] Course course, HttpPostedFileBase teachingMaterialImage)
+        public async Task<ActionResult> Create([Bind("CourseID,Title,Credits,DepartmentID,TeachingMaterialImagePath")] Course course, IFormFile teachingMaterialImage)
         {
             if (ModelState.IsValid)
             {
                 // Handle file upload if an image is provided
-                if (teachingMaterialImage != null && teachingMaterialImage.ContentLength > 0)
+                if (teachingMaterialImage != null && teachingMaterialImage.Length > 0)
                 {
                     // Validate file type
                     var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp" };
@@ -63,7 +72,7 @@ namespace ContosoUniversity.Controllers
                     }
 
                     // Validate file size (max 5MB)
-                    if (teachingMaterialImage.ContentLength > 5 * 1024 * 1024)
+                    if (teachingMaterialImage.Length > 5 * 1024 * 1024)
                     {
                         ModelState.AddModelError("teachingMaterialImage", "File size must be less than 5MB.");
                         ViewBag.DepartmentID = new SelectList(db.Departments, "DepartmentID", "Name", course.DepartmentID);
@@ -73,7 +82,7 @@ namespace ContosoUniversity.Controllers
                     try
                     {
                         // Create uploads directory if it doesn't exist
-                        var uploadsPath = Server.MapPath("~/Uploads/TeachingMaterials/");
+                        var uploadsPath = Path.Combine(_hostEnvironment.WebRootPath ?? _hostEnvironment.ContentRootPath, "Uploads", "TeachingMaterials");
                         if (!Directory.Exists(uploadsPath))
                         {
                             Directory.CreateDirectory(uploadsPath);
@@ -84,7 +93,10 @@ namespace ContosoUniversity.Controllers
                         var filePath = Path.Combine(uploadsPath, fileName);
 
                         // Save file
-                        teachingMaterialImage.SaveAs(filePath);
+                        using (var stream = new FileStream(filePath, FileMode.Create))
+                        {
+                            await teachingMaterialImage.CopyToAsync(stream);
+                        }
                         course.TeachingMaterialImagePath = $"~/Uploads/TeachingMaterials/{fileName}";
                     }
                     catch (Exception ex)
@@ -113,12 +125,12 @@ namespace ContosoUniversity.Controllers
         {
             if (id == null)
             {
-                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
+                return BadRequest();
             }
             Course course = db.Courses.Find(id);
             if (course == null)
             {
-                return HttpNotFound();
+                return NotFound();
             }
             ViewBag.DepartmentID = new SelectList(db.Departments, "DepartmentID", "Name", course.DepartmentID);
             return View(course);
@@ -127,12 +139,12 @@ namespace ContosoUniversity.Controllers
         // POST: Courses/Edit/5
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public ActionResult Edit([Bind(Include = "CourseID,Title,Credits,DepartmentID,TeachingMaterialImagePath")] Course course, HttpPostedFileBase teachingMaterialImage)
+        public async Task<ActionResult> Edit([Bind("CourseID,Title,Credits,DepartmentID,TeachingMaterialImagePath")] Course course, IFormFile teachingMaterialImage)
         {
             if (ModelState.IsValid)
             {
                 // Handle file upload if a new image is provided
-                if (teachingMaterialImage != null && teachingMaterialImage.ContentLength > 0)
+                if (teachingMaterialImage != null && teachingMaterialImage.Length > 0)
                 {
                     // Validate file type
                     var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp" };
@@ -146,7 +158,7 @@ namespace ContosoUniversity.Controllers
                     }
 
                     // Validate file size (max 5MB)
-                    if (teachingMaterialImage.ContentLength > 5 * 1024 * 1024)
+                    if (teachingMaterialImage.Length > 5 * 1024 * 1024)
                     {
                         ModelState.AddModelError("teachingMaterialImage", "File size must be less than 5MB.");
                         ViewBag.DepartmentID = new SelectList(db.Departments, "DepartmentID", "Name", course.DepartmentID);
@@ -156,7 +168,7 @@ namespace ContosoUniversity.Controllers
                     try
                     {
                         // Create uploads directory if it doesn't exist
-                        var uploadsPath = Server.MapPath("~/Uploads/TeachingMaterials/");
+                        var uploadsPath = Path.Combine(_hostEnvironment.WebRootPath ?? _hostEnvironment.ContentRootPath, "Uploads", "TeachingMaterials");
                         if (!Directory.Exists(uploadsPath))
                         {
                             Directory.CreateDirectory(uploadsPath);
@@ -169,7 +181,7 @@ namespace ContosoUniversity.Controllers
                         // Delete old file if exists
                         if (!string.IsNullOrEmpty(course.TeachingMaterialImagePath))
                         {
-                            var oldFilePath = Server.MapPath(course.TeachingMaterialImagePath);
+                            var oldFilePath = Path.Combine(_hostEnvironment.WebRootPath ?? _hostEnvironment.ContentRootPath, course.TeachingMaterialImagePath.TrimStart('~', '/').Replace('/', Path.DirectorySeparatorChar));
                             if (System.IO.File.Exists(oldFilePath))
                             {
                                 System.IO.File.Delete(oldFilePath);
@@ -177,7 +189,10 @@ namespace ContosoUniversity.Controllers
                         }
 
                         // Save new file
-                        teachingMaterialImage.SaveAs(filePath);
+                        using (var stream = new FileStream(filePath, FileMode.Create))
+                        {
+                            await teachingMaterialImage.CopyToAsync(stream);
+                        }
                         course.TeachingMaterialImagePath = $"~/Uploads/TeachingMaterials/{fileName}";
                     }
                     catch (Exception ex)
@@ -205,12 +220,12 @@ namespace ContosoUniversity.Controllers
         {
             if (id == null)
             {
-                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
+                return BadRequest();
             }
             Course course = db.Courses.Include(c => c.Department).Where(c => c.CourseID == id).Single();
             if (course == null)
             {
-                return HttpNotFound();
+                return NotFound();
             }
             return View(course);
         }
@@ -226,7 +241,7 @@ namespace ContosoUniversity.Controllers
             // Delete associated image file if it exists
             if (!string.IsNullOrEmpty(course.TeachingMaterialImagePath))
             {
-                var filePath = Server.MapPath(course.TeachingMaterialImagePath);
+                var filePath = Path.Combine(_hostEnvironment.WebRootPath ?? _hostEnvironment.ContentRootPath, course.TeachingMaterialImagePath.TrimStart('~', '/').Replace('/', Path.DirectorySeparatorChar));
                 if (System.IO.File.Exists(filePath))
                 {
                     try
