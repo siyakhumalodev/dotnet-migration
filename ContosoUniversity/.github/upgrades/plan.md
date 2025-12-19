@@ -57,7 +57,7 @@ This plan outlines the migration of the ContosoUniversity ASP.NET MVC applicatio
 **Classification: Critical** ??
 
 **Justification:**
-- **Architectural Migration Required**: This is not a simple framework upgrade—it's a complete architectural transformation from ASP.NET Framework (System.Web) to ASP.NET Core
+- **Architectural Migration Required**: This is not a simple framework upgradeï¿½it's a complete architectural transformation from ASP.NET Framework (System.Web) to ASP.NET Core
 - **High API Incompatibility**: 534 binary incompatible APIs (86.7% are System.Web.Mvc APIs that don't exist in ASP.NET Core)
 - **Security Vulnerability Present**: Microsoft.Data.SqlClient has known security issues requiring immediate attention
 - **Multiple Technology Migrations**:
@@ -92,7 +92,7 @@ This plan outlines the migration of the ContosoUniversity ASP.NET MVC applicatio
 
 ### Selected Strategy
 
-**All-At-Once Strategy** — All project transformations performed simultaneously in a single coordinated operation.
+**All-At-Once Strategy** ï¿½ All project transformations performed simultaneously in a single coordinated operation.
 
 **Rationale:**
 - Single project solution (only ContosoUniversity.csproj)
