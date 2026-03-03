@@ -1,35 +1,17 @@
 using System;
-using System.Messaging;
-using System.Configuration;
+using System.Collections.Concurrent;
 using ContosoUniversity.Models;
-using Newtonsoft.Json;
 
 namespace ContosoUniversity.Services
 {
+    /// <summary>
+    /// In-memory notification service replacing the former MSMQ-based implementation.
+    /// Uses a thread-safe ConcurrentQueue for cross-request notification delivery.
+    /// </summary>
     public class NotificationService
     {
-        private readonly string _queuePath;
-        private readonly MessageQueue _queue;
-
-        public NotificationService()
-        {
-            // Get queue path from configuration or use default
-            _queuePath = ConfigurationManager.AppSettings["NotificationQueuePath"] ?? @".\Private$\ContosoUniversityNotifications";
-            
-            // Ensure the queue exists
-            if (!MessageQueue.Exists(_queuePath))
-            {
-                _queue = MessageQueue.Create(_queuePath);
-                _queue.SetPermissions("Everyone", MessageQueueAccessRights.FullControl);
-            }
-            else
-            {
-                _queue = new MessageQueue(_queuePath);
-            }
-            
-            // Configure queue formatter
-            _queue.Formatter = new XmlMessageFormatter(new Type[] { typeof(string) });
-        }
+        private static readonly ConcurrentQueue<Notification> _notifications = new ConcurrentQueue<Notification>();
+        private static int _idCounter = 0;
 
         public void SendNotification(string entityType, string entityId, EntityOperation operation, string userName = null)
         {
@@ -42,6 +24,7 @@ namespace ContosoUniversity.Services
             {
                 var notification = new Notification
                 {
+                    Id = System.Threading.Interlocked.Increment(ref _idCounter),
                     EntityType = entityType,
                     EntityId = entityId,
                     Operation = operation.ToString(),
@@ -51,14 +34,7 @@ namespace ContosoUniversity.Services
                     IsRead = false
                 };
 
-                var jsonMessage = JsonConvert.SerializeObject(notification);
-                var message = new Message(jsonMessage)
-                {
-                    Label = $"{entityType} {operation}",
-                    Priority = MessagePriority.Normal
-                };
-
-                _queue.Send(message);
+                _notifications.Enqueue(notification);
             }
             catch (Exception ex)
             {
@@ -69,22 +45,11 @@ namespace ContosoUniversity.Services
 
         public Notification ReceiveNotification()
         {
-            try
+            if (_notifications.TryDequeue(out var notification))
             {
-                var message = _queue.Receive(TimeSpan.FromSeconds(1));
-                var jsonContent = message.Body.ToString();
-                return JsonConvert.DeserializeObject<Notification>(jsonContent);
+                return notification;
             }
-            catch (MessageQueueException ex) when (ex.MessageQueueErrorCode == MessageQueueErrorCode.IOTimeout)
-            {
-                // No messages available
-                return null;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to receive notification: {ex.Message}");
-                return null;
-            }
+            return null;
         }
 
         public void MarkAsRead(int notificationId)
@@ -95,8 +60,8 @@ namespace ContosoUniversity.Services
 
         private string GenerateMessage(string entityType, string entityId, string entityDisplayName, EntityOperation operation)
         {
-            var displayText = !string.IsNullOrWhiteSpace(entityDisplayName) 
-                ? $"{entityType} '{entityDisplayName}'" 
+            var displayText = !string.IsNullOrWhiteSpace(entityDisplayName)
+                ? $"{entityType} '{entityDisplayName}'"
                 : $"{entityType} (ID: {entityId})";
 
             switch (operation)
@@ -110,11 +75,6 @@ namespace ContosoUniversity.Services
                 default:
                     return $"{displayText} operation: {operation}";
             }
-        }
-
-        public void Dispose()
-        {
-            _queue?.Dispose();
         }
     }
 }
